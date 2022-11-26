@@ -163,7 +163,7 @@ def generate_embeddings(user_path, feature_extractor, feature_model, base_save_p
     print("User:", user)
     
     # Create the base path.
-    base_image_path = user_path
+    base_image_path = user_path + "/images/"
 
     # Get all of the different paths.
     image_paths = []
@@ -243,7 +243,7 @@ if __name__ == "__main__":
 
     np.random.shuffle(remaining_users)
 
-    with Pool(2) as p:
+    with Pool(1) as p:
         p.map(func, remaining_users)
 
 # func(users[0])
