@@ -82,7 +82,7 @@ def build_feature_extractor(name = "resnet50", input_shape = None):
     raise ValueError(f"Received invalid feature extractor base {name}.")
 
   # Create the input tensor for the model.
-  input_tensor = Input(shape = (256, 256, 3))                  if input_shape is None else Input(shape = input_shape)
+  input_tensor = Input(shape = (256, 256, 3)) if input_shape is None else Input(shape = input_shape)
   
   # Load the feature extractor.
   _pretrained_transfer_model = _model_base(
