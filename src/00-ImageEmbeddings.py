@@ -5,12 +5,14 @@ import os
 import io
 import sys
 import pickle
+import traceback
 
 import cv2
 import numpy as np
 import pandas as pd
 
 import glob
+import filetype
 
 from multiprocessing import Pool
 #from multiprocess import Pool
@@ -23,7 +25,7 @@ from tensorflow.keras.layers import Input, Dense
 from tensorflow.keras.layers import GlobalAveragePooling2D
 from tensorflow.keras.losses import categorical_crossentropy
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.applications import ResNet50, VGG19, InceptionV3, EfficientNetB0, EfficientNetB1, DenseNet121
+from tensorflow.keras.applications import ResNet50, VGG19, InceptionV3, EfficientNetB0, EfficientNetB1, DenseNet121, ConvNeXtXLarge
 
 
 # In[ ]:
@@ -40,6 +42,11 @@ def load_image(image_path):
   # If image paths don't exist, then just skip and move on.
   if not os.path.exists(image_path):
     return False
+
+  this_type = filetype.guess(image_path)
+  if this_type is None:
+      print("Unguessable Image: " + str(image_path))
+      return False
 
   # Read the image.
   image = cv2.imread(image_path)
@@ -78,6 +85,8 @@ def build_feature_extractor(name = "resnet50", input_shape = None):
     _model_base = EfficientNetB1
   elif name == "densenet":
     _model_base = DenseNet121
+  elif name == "convnext":
+    _model_base = ConvNeXtXLarge
   else:
     raise ValueError(f"Received invalid feature extractor base {name}.")
 
@@ -142,7 +151,12 @@ def extract_features(image_paths, feature_extractor, batch_size=100):
     for i in range(0, len(image_paths), batch_size):
         print("Batch: ", i)
         image_batch = [load_image(img_path) for img_path in image_paths[i:i+batch_size]]
-        arrs.append(feature_extractor.predict(np.array(image_batch)))
+        try:
+            arrs.append(feature_extractor.predict(np.array(image_batch)))
+        except Exception as e:
+            print("ERROR on Batch:", i)
+            traceback.print_exc()
+            arrs.append([None] * len(image_batch))
 
     # Return the compiled feature vectors.
     return np.concatenate(arrs)
@@ -157,13 +171,13 @@ def extract_features(image_paths, feature_extractor, batch_size=100):
 # In[ ]:
 
 
-def generate_embeddings(user_path, feature_extractor, feature_model, base_save_path, sample_size):
+def generate_embeddings(user_path, feature_extractor, feature_model, base_save_path, sample_size=None):
 
     user = user_path.rpartition("/")[-1]
     print("User:", user)
     
     # Create the base path.
-    base_image_path = user_path + "/images/"
+    base_image_path = user_path #+ "/images/"
 
     # Get all of the different paths.
     image_paths = []
@@ -172,11 +186,17 @@ def generate_embeddings(user_path, feature_extractor, feature_model, base_save_p
             continue
         image_paths.append(os.path.join(base_image_path,file))
 
+    # Check each image to make sure it really is an image
+    image_paths = [img_path for img_path in image_paths if filetype.guess(img_path) is not None]
+
     if len(image_paths) < 2:
         return None
-            
+
     print("[%s] Images: %d" % (user, len(image_paths)))
     np.random.shuffle(image_paths)
+
+    if sample_size is None:
+        sample_size = len(image_paths)
     
     paths_csv_file = os.path.join(base_save_path, f'{user}_{feature_model}_paths.csv')
     this_path_df = pd.DataFrame(image_paths[:sample_size], columns=["path"])
@@ -210,9 +230,10 @@ def generate_embeddings(user_path, feature_extractor, feature_model, base_save_p
 
 
 # Create the path to save the features to.
-feature_model_name = 'effnet1'
+#feature_model_name = 'convnext'
+feature_model_name = 'convnext'
 base_save_path = 'user.imgs.embeddings.%s/' % feature_model_name
-sample_size = 4271
+sample_size = None
 
 def func(user_path):
     local_feature_extractor = build_feature_extractor(name = feature_model_name)
@@ -229,11 +250,12 @@ if __name__ == "__main__":
 
 
     target_path = sys.argv[1]
+    print("Path:", target_path)
 
     users = [user_path for user_path in glob.glob(target_path)]
     print(users[:10])
 
-    collected_users = [user_path for user_path in glob.glob(base_save_path + "/*.csv")]
+    collected_users = [user_path for user_path in glob.glob(base_save_path + "/*.pickle")]
     collected_users = [u.rpartition("/")[-1].partition("_")[0] for u in collected_users]
     print(collected_users[:10])
 
